@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="ko">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<title>역사 퀴즈</title>
+		<style>
+				body{font-family:system-ui, -apple-system, "Noto Sans KR", "Segoe UI", Roboto, sans-serif; margin:0; padding:20px; background:#f7f7f7; min-height:100vh; display:flex; align-items:center; justify-content:center; flex-direction:column}
+			h1{margin:0 0 12px}
+			.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+			.card{background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);display:flex;flex-direction:column}
+			.card img{width:100%;height:140px;object-fit:cover}
+			.card .meta{padding:8px;flex:1;display:flex;flex-direction:column}
+			.title{font-size:14px;margin-bottom:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+			.btn{display:inline-block;padding:6px 10px;background:#0b5fff;color:#fff;border-radius:6px;text-decoration:none;text-align:center;cursor:pointer}
+			#modal{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:rgba(0,0,0,.5)}
+			.dialog{background:#fff;padding:16px;border-radius:8px;width:min(720px,96%);max-height:90vh;overflow:auto}
+			.dialog img{max-width:200px;max-height:160px;object-fit:contain;border:1px solid #eee;margin-right:12px}
+			.row{display:flex;gap:12px;align-items:flex-start}
+			label{font-weight:600;font-size:13px}
+			input[type=text]{width:100%;padding:8px;margin:6px 0 12px;border:1px solid #ddd;border-radius:6px;box-sizing:border-box}
+			.controls{display:flex;gap:8px}
+			.small{font-size:13px;padding:6px 8px}
+			footer{margin-top:12px;font-size:13px;color:#666}
+
+				/* centered feedback overlay */
+				#center-feedback{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);min-width:260px;max-width:90vw;padding:18px 24px;border-radius:14px;text-align:center;font-size:1.3rem;font-weight:900;color:#fff;display:none;z-index:9999;box-shadow:0 10px 28px rgba(0,0,0,.25)}
+		</style>
+	</head>
+	<body>
+		<h1>역사 퀴즈</h1>
+		<p>화면에 질문이 하나씩 표시됩니다.</p>
+
+		<div style="display:flex;gap:16px;align-items:center;justify-content:center;width:100%">
+			<div style="flex:1;max-width:720px;background:#fff;padding:16px;border-radius:8px;box-shadow:0 1px 6px rgba(0,0,0,.06)">
+				<div style="display:flex;justify-content:space-between;align-items:center">
+					<h2 id="q-title" style="margin:0">퀴즈</h2>
+					<div id="score" style="font-weight:700;color:#0b5fff">점수 0 / 0</div>
+				</div>
+
+				<div style="margin-top:12px;text-align:center">
+					<img id="quiz-img" src="" alt="" style="max-width:100%;height:auto;max-height:60vh;object-fit:contain;border-radius:6px;border:1px solid #eee">
+				</div>
+
+					<div style="margin-top:12px">
+					<label id="question-label" style="font-weight:700">질문</label>
+					<div id="question-text" style="margin:6px 0 10px;color:#333"></div>
+					<input type="text" id="answer-input" placeholder="답안을 입력하세요" />
+
+					<div class="controls" style="margin-top:8px">
+						<button id="submit-ans" class="btn" style="background:#16a34a">제출(학생)</button>
+						<button id="reset-score" class="btn small" style="background:#aaa">처음부터</button>
+					</div>
+
+					<div id="feedback" style="margin-top:12px;color:#333"></div>
+				</div>
+			</div>
+
+			<!-- centered feedback overlay -->
+			<div id="center-feedback" aria-live="polite"></div>
+		</div>
+
+		<script>
+			const images = [
+				"1917.jpg",
+				"고지전.jpg",
+				"관상.jpg",
+				"광해.jpg",
+				"국제시장.jpg",
+				"군함도.jpg",
+				"그때 그사람들.jpg",
+				"남한산성.jpg",
+				"달의 연인.jpg",
+				"대호.jpg",
+				"덩케스트.jpg",
+				"동주.jpg",
+				"레미제라블.jpg",
+				"링컨.jpg",
+				"마지막 황제.jpg",
+				"말모이.jpg",
+				"명량.jpg",
+				"미스터 션샤인.jpg",
+				"밀정.jpg",
+				"봉도동 전투.jpg",
+				"사도.jpg",
+				"서울의 봄.jpg",
+				"안시성.jpg",
+				"알렉산더.jpg",
+				"암살.jpg",
+				"연평해전.jpg",
+				"영웅.jpg",
+				"왕과 사는 남자.jpg",
+				"왕의 남자.jpg",
+				"우씨 왕후.jpg",
+				"이미테이션게임.jpg",
+				"인천상륙작전.jpg",
+				"전태일.webp",
+				"천문.jpg",
+				"철인왕후.jpg",
+				"트로이.jpg",
+				"평양성.jpg",
+				"하얼빈.png",
+				"한란.jpg",
+				"항거.jpg"
+			];
+
+			const quizImg = document.getElementById('quiz-img');
+			const questionText = document.getElementById('question-text');
+			const questionLabel = document.getElementById('question-label');
+			const answerInput = document.getElementById('answer-input');
+			const submitBtn = document.getElementById('submit-ans');
+			const feedback = document.getElementById('feedback');
+			const scoreEl = document.getElementById('score');
+			const resetScoreBtn = document.getElementById('reset-score');
+
+			let currentIndex = 0;
+			// answers map chosen by assistant (one question per image)
+
+			// answersMap: assistant-provided accepted answers.
+			// Each entry has `ask: 'period'|'second'` and `answers: [{text, points}]` where points are between 0 and 1.
+			const answersMap = {
+				"1917.jpg": { ask:'period', question:'위 장면과 연관된 사건의 이름을 쓰세요.', answers:[{text:'제1차 세계대전', points:1}, {text:'1차 세계대전', points:1}] },
+				"고지전.jpg": { ask:'second', question:'위 장면과 관련된 사건을 쓰세요.', answers:[{text:'한국전쟁', points:1},{text:'6.25 전쟁', points:1}, {text:'625 전쟁', points:1}, {text:'625전쟁', points:1}, {text:'6.25전쟁', points:1}] },
+				"관상.jpg": { ask:'period', question:'위 이미지에 속한 왕의 이름을 쓰세요.', answers:[{text:'수양대군', points:1}, {text:'세조', points:1}] },
+				"광해.jpg": { ask:'second', question:'위 이미지에 속한 왕은 어느시대의 몇대 국왕인지 쓰세요. (예: ㅁㅁ시대 제ㅁ대 국왕)', answers:[{text:'조선시대 제15대 국왕', points:1}] },
+				"국제시장.jpg": { ask:'period', question:'이 이야기가 주로 일어난 시기를 쓰세요.', answers:[{text:'1950-1960년대', points:1},{text:'1950년대', points:0.8}] },
+				"군함도.jpg": { ask:'period', question:'이 장면의 역사적 시기를 쓰세요.', answers:[{text:'일제강점기', points:1}] },
+				"그때 그사람들.jpg": { ask:'period', question:'이 작품의 배경이 되는 시대를 쓰세요.', answers:[{text:'20세기', points:1}] },
+				"남한산성.jpg": { ask:'period', question:'남한산성 관련 사건의 연도를 쓰세요.', answers:[{text:'1636', points:1}] },
+				"달의 연인.jpg": { ask:'period', question:'이 드라마의 시대 배경(나라/시대)을 쓰세요.', answers:[{text:'고려시대', points:1}] },
+				"대호.jpg": { ask:'second', question:'이 작품의 주요 인물 이름을 쓰세요.', answers:[{text:'대호', points:1}] },
+				"덩케스트.jpg": { ask:'period', question:'이 전투(장면)의 연도를 쓰세요.', answers:[{text:'1940', points:1}] },
+				"동주.jpg": { ask:'period', question:'이 인물의 활동 시기를 쓰세요.', answers:[{text:'1930년대', points:1}] },
+				"레미제라블.jpg": { ask:'period', question:'원작 배경 시대(세기)를 쓰세요.', answers:[{text:'19세기', points:1}] },
+				"링컨.jpg": { ask:'second', question:'이 인물의 이름을 쓰세요.', answers:[{text:'에이브러햄 링컨', points:1},{text:'링컨', points:1}] },
+				"마지막 황제.jpg": { ask:'second', question:'이 인물의 이름을 쓰세요.', answers:[{text:'푸이', points:1}] },
+				"말모이.jpg": { ask:'period', question:'이 책/영화의 배경 연대나 시기를 쓰세요.', answers:[{text:'1940년대', points:1}] },
+				"명량.jpg": { ask:'second', question:'이 인물의 이름을 쓰세요.', answers:[{text:'이순신', points:1},{text:'이순신 장군', points:1}] },
+				"미스터 션샤인.jpg": { ask:'period', question:'이 작품의 시대 배경을 쓰세요.', answers:[{text:'1900년대 초', points:1}] },
+				"밀정.jpg": { ask:'period', question:'이야기의 주요 활동 시기를 쓰세요.', answers:[{text:'1920년대', points:1}] },
+				"봉도동 전투.jpg": { ask:'second', question:'이 전투의 이름을 쓰세요.', answers:[{text:'봉도동 전투', points:1}] },
+				"사도.jpg": { ask:'second', question:'이 인물의 이름을 쓰세요.', answers:[{text:'사도세자', points:1}] },
+				"서울의 봄.jpg": { ask:'period', question:'이 시기의 연도 또는 명칭을 쓰세요.', answers:[{text:'1980년대', points:1}] },
+				"안시성.jpg": { ask:'period', question:'이 성과 관련된 시기를 쓰세요.', answers:[{text:'7세기', points:1}] },
+				"알렉산더.jpg": { ask:'second', question:'이 인물의 이름을 쓰세요.', answers:[{text:'알렉산더 대왕', points:1},{text:'알렉산더', points:0.9}] },
+				"암살.jpg": { ask:'second', question:'이 이미지와 관련된 인물 또는 사건을 쓰세요.', answers:[{text:'암살단 관련', points:1}] },
+				"연평해전.jpg": { ask:'period', question:'이 사건이 일어난 연도를 쓰세요.', answers:[{text:'2002', points:1}] },
+				"영웅.jpg": { ask:'second', question:'이 작품의 주인공 이름을 쓰세요.', answers:[{text:'영웅', points:1}] },
+				"왕과 사는 남자.jpg": { ask:'second', question:'이 작품에서 중요한 인물 이름을 쓰세요.', answers:[{text:'광해군', points:1}] },
+				"왕의 남자.jpg": { ask:'second', question:'이 작품의 중심 인물을 쓰세요.', answers:[{text:'광대', points:1}] },
+				"우씨 왕후.jpg": { ask:'second', question:'이 인물의 이름을 쓰세요.', answers:[{text:'우씨 왕후', points:1}] },
+				"이미테이션게임.jpg": { ask:'second', question:'이 인물의 이름을 쓰세요.', answers:[{text:'앨런 튜링', points:1},{text:'튜링', points:0.9}] },
+				"인천상륙작전.jpg": { ask:'period', question:'이 작전이 일어난 연도를 쓰세요.', answers:[{text:'1950', points:1}] },
+				"전태일.webp": { ask:'second', question:'이 인물의 이름을 쓰세요.', answers:[{text:'전태일', points:1}] },
+				"천문.jpg": { ask:'period', question:'이 이미지와 관련된 시대를 쓰세요.', answers:[{text:'조선시대', points:1}] },
+				"철인왕후.jpg": { ask:'second', question:'이 작품의 인물이나 제목을 쓰세요.', answers:[{text:'철인왕후', points:1}] },
+				"트로이.jpg": { ask:'period', question:'이 전설의 시대(또는 근사 연대)를 쓰세요.', answers:[{text:'BC 12세기(전설적)', points:1},{text:'기원전 12세기', points:0.8}] },
+				"평양성.jpg": { ask:'period', question:'이 전투(사건)의 연도를 쓰세요.', answers:[{text:'1592', points:1}] },
+				"하얼빈.png": { ask:'second', question:'이 사건과 관련된 인물을 쓰세요.', answers:[{text:'안중근', points:1}] },
+				"한란.jpg": { ask:'second', question:'이 작품 또는 인물명을 쓰세요.', answers:[{text:'한란', points:1}] },
+				"항거.jpg": { ask:'period', question:'이 항거(운동)의 연도를 쓰세요.', answers:[{text:'1919', points:1}] }
+			};
+
+			const questionTypes = images.map(name => answersMap[name]?.ask || 'second');
+
+			let score = loadScore();
+
+			function basename(name){ return name.replace(/\.[^.]+$/,''); }
+
+			// no admin-save: answers are provided by the assistant via `answersMap`
+
+			function scoreKey(){ return 'quiz_score'; }
+			function loadScore(){ try{ return JSON.parse(localStorage.getItem(scoreKey())) || {attempts:0,points:0}; }catch(e){return {attempts:0,points:0}} }
+			function saveScore(s){ localStorage.setItem(scoreKey(), JSON.stringify(s)); }
+
+			function getAcceptedAnswers(name){
+				const entry = answersMap[name];
+				if(!entry) return [{text: basename(name), points: 1}];
+				return entry.answers || (entry.answer ? [{text:entry.answer, points:1}] : []);
+			}
+
+			function totalPossiblePoints(){
+				// each question's max points is the max points among its accepted answers (default 1)
+				return images.reduce((sum,name)=>{
+					const arr = getAcceptedAnswers(name);
+					const mx = arr.reduce((m,a)=>Math.max(m,a.points||0),0) || 1;
+					return sum + mx;
+				},0);
+			}
+
+			function render(){
+				const name = images[currentIndex];
+				quizImg.src = 'images/' + encodeURIComponent(name).replace(/%2F/g,'/');
+				const base = basename(name);
+				document.getElementById('q-title').textContent = `${currentIndex+1} / ${images.length} — ${base}`;
+				const qType = questionTypes[currentIndex];
+				const entry = answersMap[name] || {};
+				if(entry.question){
+					questionText.textContent = entry.question;
+				} else if(qType === 'period'){
+					questionText.textContent = '이 이미지의 시기를 쓰세요.';
+				} else {
+					questionText.textContent = '관련인물 또는 관련사건을 쓰세요.';
+				}
+				answerInput.value = '';
+				feedback.textContent = '';
+				// hide center feedback when rendering a new question
+				const centerFb = document.getElementById('center-feedback');
+				if(centerFb) centerFb.style.display = 'none';
+				updateScoreDisplay();
+				renderProgress();
+			}
+
+			function showCenterFeedback(text,type){
+				const el = document.getElementById('center-feedback');
+				if(!el) return;
+				el.textContent = text;
+				if(type === 'ok'){
+					el.style.background = '#16a34a';
+					el.style.border = '2px solid #0b8a3a';
+				} else if(type === 'bad'){
+					el.style.background = '#ef4444';
+					el.style.border = '2px solid #c23333';
+				} else {
+					el.style.background = '#333';
+					el.style.border = '2px solid #222';
+				}
+				el.style.display = 'block';
+				// auto-hide after delay (matches navigation delay)
+				setTimeout(()=>{ el.style.display = 'none'; }, 1000);
+			}
+
+			function updateScoreDisplay(){
+				const denom = totalPossiblePoints();
+				scoreEl.textContent = `점수 ${Number(score.points).toFixed(2)} / ${denom}`;
+			}
+
+			function renderProgress(){ /* progress removed */ }
+
+			submitBtn.onclick = ()=>{
+				const name = images[currentIndex];
+				const userAns = (answerInput.value||'').trim();
+				const accepted = getAcceptedAnswers(name);
+				// find best-matching accepted answer
+				let awarded = 0;
+				let matchedText = null;
+				accepted.forEach(a=>{
+					if(compareAnswers(userAns, a.text)){
+						if((a.points||0) > awarded){ awarded = a.points||0; matchedText = a.text; }
+					}
+				});
+				// update attempts
+				score.attempts++;
+				if(awarded > 0) {
+					// award partial/full points
+					score.points = (score.points || 0) + awarded;
+					saveScore(score);
+					updateScoreDisplay();
+					feedback.textContent = `부분점수: ${awarded} 획득. 정답: ${matchedText}`;
+					showCenterFeedback(`정답! +${awarded}`, 'ok');
+					// if full points awarded, auto-advance to next question
+					const maxPoints = accepted.reduce((m,a)=>Math.max(m,a.points||0),0) || 1;
+					if(awarded >= maxPoints){
+						setTimeout(()=>{ currentIndex = (currentIndex + 1) % images.length; render(); }, 1000);
+					}
+				} else {
+					// incorrect: no points, move to next question
+					saveScore(score);
+					updateScoreDisplay();
+					feedback.textContent = `오답. 다음 문제로 이동합니다.`;
+					showCenterFeedback('오답', 'bad');
+					setTimeout(()=>{ currentIndex = (currentIndex + 1) % images.length; render(); }, 1000);
+				}
+			};
+
+
+
+			function shuffle(array){
+				for(let i = array.length - 1; i > 0; i--){
+					const j = Math.floor(Math.random() * (i + 1));
+					[array[i], array[j]] = [array[j], array[i]];
+				}
+			}
+
+			resetScoreBtn.onclick = ()=>{
+				// reset points
+				score = {attempts:0,points:0};
+				saveScore(score);
+				// shuffle question order and update questionTypes accordingly
+				shuffle(images);
+				questionTypes.length = 0;
+				images.forEach(name => questionTypes.push(answersMap[name]?.ask || 'second'));
+				// go to first question and render
+				currentIndex = 0;
+				render();
+			};
+
+			function normalize(s){ return (s||'').toString().trim().toLowerCase().replace(/\s+/g,' '); }
+			function compareAnswers(a,b){ if(!b) return false; return normalize(a) === normalize(b); }
+
+			// init
+			render();
+		</script>
+	</body>
+</html>
